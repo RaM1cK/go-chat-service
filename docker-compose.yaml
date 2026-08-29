@@ -1,0 +1,48 @@
+services:
+  scylla:
+    image: scylladb/scylla
+    volumes:
+      - scylla_data:/var/lib/scylla
+    healthcheck:
+      test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  pgsql:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${DB_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  chat-service:
+    build:
+      context: .
+      dockerfile: dockerfile
+    environment:
+      SERVER_PORT: ${SERVER_PORT}
+      SECRET_KEY: ${SECRET_KEY}
+      SCYLLA_URL: ${SCYLLA_URL}
+      SCYLLA_KEYSPACE: ${SCYLLA_KEYSPACE}
+    ports:
+      - "8080:8080"
+    restart: always
+    depends_on:
+      scylla: 
+        condition: service_healthy
+      pgsql:
+        condition: service_healthy
+
+volumes:
+  scylla_data:
+  postgres_data:

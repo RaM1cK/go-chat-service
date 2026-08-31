@@ -10,7 +10,7 @@ WHERE user_a = $1 AND user_b = $2;
 
 -- name: InsertChat :one
 INSERT INTO chats (type, name, logo)
-VALUES ($1, null, null)
+VALUES ($1, $2, $3)
 RETURNING id;
 
 -- name: InsertChatMember :exec

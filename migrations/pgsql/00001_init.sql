@@ -1,10 +1,7 @@
 -- +goose Up
 -- +goose StatementBegin
 CREATE TABLE users (
-    id       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    nickname text NOT NULL,
-    email    text NOT NULL UNIQUE,
-    avatar   text
+    id       uuid PRIMARY KEY,
 );
 
 CREATE TABLE chats (

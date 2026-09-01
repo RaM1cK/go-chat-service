@@ -13,3 +13,10 @@ type MessageRepository interface {
 	GetByChatID(ctx context.Context, chatID uuid.UUID, limit int) ([]dto.Message, error)
 	Delete(ctx context.Context, chatID uuid.UUID, createdAt time.Time, id int64) error
 }
+
+type ChatRepository interface {
+	Create(ctx context.Context, params dto.CreateChatParams) (dto.Chat, error)
+	AddUser(ctx context.Context, userID uuid.UUID, chatID uuid.UUID) error
+	RemoveUser(ctx context.Context, userID uuid.UUID, chatID uuid.UUID) error
+	Delete(ctx context.Context, chatID uuid.UUID) error
+}

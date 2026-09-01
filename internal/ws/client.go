@@ -1,15 +1,17 @@
 package ws
 
 import (
-	// "context"
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
-	// "spotify-chat/domain"
+
 	"spotify-chat/internal/auth"
-	// "spotify-chat/internal/service"
+	"spotify-chat/internal/dto"
+	"spotify-chat/internal/service"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
@@ -24,20 +26,19 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-type Message struct {
-	Event    string          `json:"event"`
-	Payload  json.RawMessage `json:"payload"`
-	Room 	 string 		 `json:"-"`
-	SenderID string			 `json:"-"`
+type Message[T any] struct {
+	Event    string `json:"event"`
+	Payload  T      `json:"payload"`
+	Room     string `json:"-"`
 }
 
 type Client struct {
 	Hub     *Hub
 	Conn    *websocket.Conn
-	Send    chan RoomMessage
+	Send    chan Message[any]
 	Rooms   map[string]struct{}
-	Inbound chan Message
-	UserID  string
+	Inbound chan Message[json.RawMessage]
+	UserID  uuid.UUID
 }
 
 func (c *Client) WritePump() {
@@ -110,7 +111,7 @@ func (c *Client) ReadPump() {
 			break
 		}
 
-		var msg Message
+		var msg Message[json.RawMessage]
 		if err := json.Unmarshal(raw, &msg); err != nil {
 			continue
 		}
@@ -136,28 +137,37 @@ func (c *Client) ReadPump() {
 				continue
 			}
 
-			c.Inbound <- Message{
+			c.Inbound <- Message[json.RawMessage]{
 				Event: "receive-message",
 				Payload: payload.Msg,
 				Room: payload.Room,
-				SenderID: c.UserID,
 			}
 		}
 	}
 }
 
-// func (c *Client) HandleInbound(srv service.MessageService) {
-// 	for m := range c.Inbound {
-// 		ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
-// 		defer cancel()
+func (c *Client) HandleInbound(srv service.MessageService) {
+	for m := range c.Inbound {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 
-// 		params := domain.CreateMessageParams{
+		var params dto.CreateMessageParams
+		if err := json.Unmarshal(m.Payload, &params); err != nil {
+			cancel()
+			continue
+		}
 
-// 		}
-// 	}
-// }
+		msg, err := srv.SaveMessage(ctx, params)
+		cancel()
 
-func ServeWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
+		if err != nil {
+			continue
+		}
+
+		c.Hub.BroadcastToRoom(m.Room, "receive-message", msg)
+	}
+}
+
+func ServeWs(hub *Hub, srv service.MessageService, w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("token")
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -179,12 +189,13 @@ func ServeWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	client := &Client{
 		Hub:     hub,
 		Conn:    conn,
-		Send:    make(chan RoomMessage, 256),
+		Send:    make(chan Message[any], 256),
 		Rooms:   make(map[string]struct{}),
-		Inbound: make(chan Message, 256),
+		Inbound: make(chan Message[json.RawMessage], 256),
 		UserID:  userID,
 	}
 
 	go client.WritePump()
+	go client.HandleInbound(srv)
 	go client.ReadPump()
 }

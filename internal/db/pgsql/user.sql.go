@@ -8,39 +8,15 @@ package pgsql
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/google/uuid"
 )
 
-const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, nickname, email, avatar FROM users
-WHERE email = $1
+const createUser = `-- name: CreateUser :exec
+INSERT INTO users (id)
+VALUES ($1)
 `
 
-func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
-	row := q.db.QueryRow(ctx, getUserByEmail, email)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.Nickname,
-		&i.Email,
-		&i.Avatar,
-	)
-	return i, err
-}
-
-const getUserByID = `-- name: GetUserByID :one
-SELECT id, nickname, email, avatar FROM users
-WHERE id = $1
-`
-
-func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error) {
-	row := q.db.QueryRow(ctx, getUserByID, id)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.Nickname,
-		&i.Email,
-		&i.Avatar,
-	)
-	return i, err
+func (q *Queries) CreateUser(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, createUser, id)
+	return err
 }

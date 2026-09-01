@@ -1,30 +1,26 @@
 package ws
 
-import "sync"
+import (
+	"sync"
+)
 
 type Registration struct {
 	Client *Client
-	Room string
+	Room   string
 }
 
 type Hub struct {
 	mu         sync.RWMutex
 	rooms      map[string]map[*Client]struct{}
-	broadcast  chan RoomMessage
+	broadcast  chan Message[any]
 	register   chan Registration
 	unregister chan Registration
-}
-
-type RoomMessage struct {
-	Room  string
-	Event string
-	Payload  any
 }
 
 func NewHub() *Hub {
 	return &Hub{
 		rooms:      make(map[string]map[*Client]struct{}),
-		broadcast:  make(chan RoomMessage),
+		broadcast:  make(chan Message[any]),
 		register:   make(chan Registration),
 		unregister: make(chan Registration),
 	}
@@ -84,9 +80,9 @@ func (h *Hub) Run() {
 }
 
 func (h *Hub) BroadcastToRoom(room, event string, payload any) {
-	h.broadcast <- RoomMessage{
-		Room: room,
-		Event: event,
-		Payload: payload,
+	h.broadcast <- Message[any]{
+		Room:     room,
+		Event:    event,
+		Payload:  payload,
 	}
 }

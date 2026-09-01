@@ -1,35 +1,35 @@
 -- +goose Up
 -- +goose StatementBegin
 CREATE TABLE users (
-    id       uuid PRIMARY KEY,
+    id       UUID PRIMARY KEY
 );
 
 CREATE TABLE chats (
-    id   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    id   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     type smallint NOT NULL DEFAULT 0,
     name text,
     logo text
 );
 
 CREATE TABLE chat_members (
-    chat_id   uuid NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
-    user_id   uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    chat_id   UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    user_id   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     joined_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (chat_id, user_id)
 );
 CREATE INDEX chat_members_user_idx ON chat_members (user_id);
 
 CREATE TABLE dm_chats (
-    user_a  uuid NOT NULL REFERENCES users(id),
-    user_b  uuid NOT NULL REFERENCES users(id),
-    chat_id uuid NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    user_a  UUID NOT NULL REFERENCES users(id),
+    user_b  UUID NOT NULL REFERENCES users(id),
+    chat_id UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
     PRIMARY KEY (user_a, user_b),
     CHECK (user_a < user_b)
 );
 
 CREATE TABLE friendships (
-    user_a     uuid NOT NULL REFERENCES users(id),
-    user_b     uuid NOT NULL REFERENCES users(id),
+    user_a     UUID NOT NULL REFERENCES users(id),
+    user_b     UUID NOT NULL REFERENCES users(id),
     status     smallint NOT NULL DEFAULT 0,
     created_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (user_a, user_b),

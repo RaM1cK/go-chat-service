@@ -8,14 +8,22 @@ RETURNING chat_id;
 SELECT chat_id FROM dm_chats
 WHERE user_a = $1 AND user_b = $2;
 
--- name: InsertChat :one
+-- name: CreateChat :one
 INSERT INTO chats (type, name, logo)
 VALUES ($1, $2, $3)
-RETURNING id;
+RETURNING id, type, name, logo;
 
--- name: InsertChatMember :exec
+-- name: AddUser :exec
 INSERT INTO chat_members (chat_id, user_id)
 VALUES ($1, $2);
+
+-- name: RemoveUser :exec
+DELETE FROM chat_members
+WHERE chat_id = $2 AND user_id = $1;
+
+-- name: DeleteChat :exec
+DELETE FROM chat_members
+WHERE chat_id = $1;
 
 -- name: GetChat :one
 SELECT id, type, name, logo FROM chats

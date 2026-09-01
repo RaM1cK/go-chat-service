@@ -8,8 +8,23 @@ package pgsql
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/google/uuid"
 )
+
+const addUser = `-- name: AddUser :exec
+INSERT INTO chat_members (chat_id, user_id)
+VALUES ($1, $2)
+`
+
+type AddUserParams struct {
+	ChatID uuid.UUID
+	UserID uuid.UUID
+}
+
+func (q *Queries) AddUser(ctx context.Context, arg AddUserParams) error {
+	_, err := q.db.Exec(ctx, addUser, arg.ChatID, arg.UserID)
+	return err
+}
 
 const claimDMChat = `-- name: ClaimDMChat :one
 INSERT INTO dm_chats (user_a, user_b, chat_id)
@@ -19,16 +34,50 @@ RETURNING chat_id
 `
 
 type ClaimDMChatParams struct {
-	UserA  pgtype.UUID
-	UserB  pgtype.UUID
-	ChatID pgtype.UUID
+	UserA  uuid.UUID
+	UserB  uuid.UUID
+	ChatID uuid.UUID
 }
 
-func (q *Queries) ClaimDMChat(ctx context.Context, arg ClaimDMChatParams) (pgtype.UUID, error) {
+func (q *Queries) ClaimDMChat(ctx context.Context, arg ClaimDMChatParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, claimDMChat, arg.UserA, arg.UserB, arg.ChatID)
-	var chat_id pgtype.UUID
+	var chat_id uuid.UUID
 	err := row.Scan(&chat_id)
 	return chat_id, err
+}
+
+const createChat = `-- name: CreateChat :one
+INSERT INTO chats (type, name, logo)
+VALUES ($1, $2, $3)
+RETURNING id, type, name, logo
+`
+
+type CreateChatParams struct {
+	Type int16
+	Name *string
+	Logo *string
+}
+
+func (q *Queries) CreateChat(ctx context.Context, arg CreateChatParams) (Chat, error) {
+	row := q.db.QueryRow(ctx, createChat, arg.Type, arg.Name, arg.Logo)
+	var i Chat
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.Name,
+		&i.Logo,
+	)
+	return i, err
+}
+
+const deleteChat = `-- name: DeleteChat :exec
+DELETE FROM chat_members
+WHERE chat_id = $1
+`
+
+func (q *Queries) DeleteChat(ctx context.Context, chatID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteChat, chatID)
+	return err
 }
 
 const getChat = `-- name: GetChat :one
@@ -36,7 +85,7 @@ SELECT id, type, name, logo FROM chats
 WHERE id = $1
 `
 
-func (q *Queries) GetChat(ctx context.Context, id pgtype.UUID) (Chat, error) {
+func (q *Queries) GetChat(ctx context.Context, id uuid.UUID) (Chat, error) {
 	row := q.db.QueryRow(ctx, getChat, id)
 	var i Chat
 	err := row.Scan(
@@ -54,43 +103,15 @@ WHERE user_a = $1 AND user_b = $2
 `
 
 type GetDMChatParams struct {
-	UserA pgtype.UUID
-	UserB pgtype.UUID
+	UserA uuid.UUID
+	UserB uuid.UUID
 }
 
-func (q *Queries) GetDMChat(ctx context.Context, arg GetDMChatParams) (pgtype.UUID, error) {
+func (q *Queries) GetDMChat(ctx context.Context, arg GetDMChatParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, getDMChat, arg.UserA, arg.UserB)
-	var chat_id pgtype.UUID
+	var chat_id uuid.UUID
 	err := row.Scan(&chat_id)
 	return chat_id, err
-}
-
-const insertChat = `-- name: InsertChat :one
-INSERT INTO chats (type, name, logo)
-VALUES ($1, null, null)
-RETURNING id
-`
-
-func (q *Queries) InsertChat(ctx context.Context, type_ int16) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, insertChat, type_)
-	var id pgtype.UUID
-	err := row.Scan(&id)
-	return id, err
-}
-
-const insertChatMember = `-- name: InsertChatMember :exec
-INSERT INTO chat_members (chat_id, user_id)
-VALUES ($1, $2)
-`
-
-type InsertChatMemberParams struct {
-	ChatID pgtype.UUID
-	UserID pgtype.UUID
-}
-
-func (q *Queries) InsertChatMember(ctx context.Context, arg InsertChatMemberParams) error {
-	_, err := q.db.Exec(ctx, insertChatMember, arg.ChatID, arg.UserID)
-	return err
 }
 
 const isChatMember = `-- name: IsChatMember :one
@@ -101,8 +122,8 @@ SELECT EXISTS(
 `
 
 type IsChatMemberParams struct {
-	ChatID pgtype.UUID
-	UserID pgtype.UUID
+	ChatID uuid.UUID
+	UserID uuid.UUID
 }
 
 func (q *Queries) IsChatMember(ctx context.Context, arg IsChatMemberParams) (bool, error) {
@@ -110,4 +131,19 @@ func (q *Queries) IsChatMember(ctx context.Context, arg IsChatMemberParams) (boo
 	var is_member bool
 	err := row.Scan(&is_member)
 	return is_member, err
+}
+
+const removeUser = `-- name: RemoveUser :exec
+DELETE FROM chat_members
+WHERE chat_id = $2 AND user_id = $1
+`
+
+type RemoveUserParams struct {
+	UserID uuid.UUID
+	ChatID uuid.UUID
+}
+
+func (q *Queries) RemoveUser(ctx context.Context, arg RemoveUserParams) error {
+	_, err := q.db.Exec(ctx, removeUser, arg.UserID, arg.ChatID)
+	return err
 }

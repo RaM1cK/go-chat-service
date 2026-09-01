@@ -6,20 +6,20 @@ import (
 	"github.com/google/uuid"
 )
 
-type Message struct {
-	ChatID    uuid.UUID
-	CreatedAt time.Time
-	ID        int64
-	SenderID  uuid.UUID
-	Data      string
-	DataType  int16
-	QuotedID  *int64
+type CreateMessageParams struct {
+	ChatID   uuid.UUID `json:"chatId"`
+	SenderID uuid.UUID `json:"senderId"`
+	Data     string    `json:"data"`
+	DataType int16     `json:"dataType"`
+	QuotedID *int64    `json:"quotedId"`
 }
 
-type CreateMessageParams struct {
-	ChatID   uuid.UUID
-	SenderID uuid.UUID
-	Data     string
-	DataType int16
-	QuotedID *int64
+type Message struct {
+	ChatID    uuid.UUID `json:"chatId"`
+	CreatedAt time.Time `json:"createdAt"`
+	ID        int64     `json:"id"`
+	SenderID  uuid.UUID `json:"senderId"`
+	Data      string    `json:"data"`
+	DataType  int16     `json:"dataType"`
+	QuotedID  *int64    `json:"quotedId"`
 }

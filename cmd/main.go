@@ -8,10 +8,12 @@ import (
 	"os"
 
 	"spotify-chat/internal/db/pgsql"
+	"spotify-chat/internal/repository"
+	"spotify-chat/internal/service"
 	"spotify-chat/internal/ws"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 
 	"github.com/gocql/gocql"
@@ -40,8 +42,6 @@ func main() {
 
 	queries := pgsql.New(pool)
 
-	_ = queries
-
 	cluster := gocql.NewCluster(os.Getenv("SCYLLA_URL"))
 
 	initSession, err := cluster.CreateSession()
@@ -50,7 +50,7 @@ func main() {
 	}
 	keyspace := os.Getenv("SCYLLA_KEYSPACE")
 	if err := initSession.Query(
-			`CREATE KEYSPACE IF NOT EXISTS ` + keyspace +
+		`CREATE KEYSPACE IF NOT EXISTS ` + keyspace +
 			` WITH replication = {'class': 'NetworkTopologyStrategy', 'datacenter1': 1}`).Exec(); err != nil {
 		log.Fatal(err)
 	}
@@ -67,11 +67,19 @@ func main() {
 		log.Fatal(err)
 	}
 
+	msgRepo := repository.NewMessageRepo(session)
+	chatRepo := repository.NewChatRepo(queries)
+
+	msgService := service.NewMessageService(msgRepo)
+	chatService := service.NewChatService(chatRepo)
+
+	_ = chatService
+
 	hub := ws.NewHub()
 	go hub.Run()
 
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		ws.ServeWs(hub, w, r)
+		ws.ServeWs(hub, msgService, w, r)
 	})
 
 	port := os.Getenv("SERVER_PORT")

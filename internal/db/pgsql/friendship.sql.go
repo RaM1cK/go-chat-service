@@ -8,7 +8,7 @@ package pgsql
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/google/uuid"
 )
 
 const createFriendship = `-- name: CreateFriendship :exec
@@ -18,8 +18,8 @@ ON CONFLICT (user_a, user_b) DO NOTHING
 `
 
 type CreateFriendshipParams struct {
-	UserA  pgtype.UUID
-	UserB  pgtype.UUID
+	UserA  uuid.UUID
+	UserB  uuid.UUID
 	Status int16
 }
 
@@ -34,8 +34,8 @@ WHERE user_a = $1 AND user_b = $2
 `
 
 type DeleteFriendshipParams struct {
-	UserA pgtype.UUID
-	UserB pgtype.UUID
+	UserA uuid.UUID
+	UserB uuid.UUID
 }
 
 func (q *Queries) DeleteFriendship(ctx context.Context, arg DeleteFriendshipParams) error {
@@ -49,8 +49,8 @@ WHERE user_a = $1 AND user_b = $2
 `
 
 type GetFriendshipParams struct {
-	UserA pgtype.UUID
-	UserB pgtype.UUID
+	UserA uuid.UUID
+	UserB uuid.UUID
 }
 
 func (q *Queries) GetFriendship(ctx context.Context, arg GetFriendshipParams) (Friendship, error) {
@@ -72,8 +72,8 @@ WHERE user_a = $1 AND user_b = $2
 `
 
 type UpdateFriendshipStatusParams struct {
-	UserA  pgtype.UUID
-	UserB  pgtype.UUID
+	UserA  uuid.UUID
+	UserB  uuid.UUID
 	Status int16
 }
 

@@ -5,38 +5,36 @@
 package pgsql
 
 import (
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Chat struct {
-	ID   pgtype.UUID
+	ID   uuid.UUID
 	Type int16
-	Name pgtype.Text
-	Logo pgtype.Text
+	Name *string
+	Logo *string
 }
 
 type ChatMember struct {
-	ChatID   pgtype.UUID
-	UserID   pgtype.UUID
+	ChatID   uuid.UUID
+	UserID   uuid.UUID
 	JoinedAt pgtype.Timestamptz
 }
 
 type DmChat struct {
-	UserA  pgtype.UUID
-	UserB  pgtype.UUID
-	ChatID pgtype.UUID
+	UserA  uuid.UUID
+	UserB  uuid.UUID
+	ChatID uuid.UUID
 }
 
 type Friendship struct {
-	UserA     pgtype.UUID
-	UserB     pgtype.UUID
+	UserA     uuid.UUID
+	UserB     uuid.UUID
 	Status    int16
 	CreatedAt pgtype.Timestamptz
 }
 
 type User struct {
-	ID       pgtype.UUID
-	Nickname string
-	Email    string
-	Avatar   pgtype.Text
+	ID uuid.UUID
 }

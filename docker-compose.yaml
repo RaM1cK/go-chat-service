@@ -3,6 +3,7 @@ services:
     image: scylladb/scylla
     volumes:
       - scylla_data:/var/lib/scylla
+    restart: always
     healthcheck:
       test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
       interval: 10s
@@ -20,7 +21,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
     restart: always
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "${DB_USER}"]
+      test: ["CMD", "pg_isready", "-U", "${DB_USER}", "-d", "${DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -34,6 +35,7 @@ services:
       SECRET_KEY: ${SECRET_KEY}
       SCYLLA_URL: ${SCYLLA_URL}
       SCYLLA_KEYSPACE: ${SCYLLA_KEYSPACE}
+      DATABASE_URL: postgres://${DB_USER}:${DB_PASSWORD}@pgsql:5432/${DB_NAME}?sslmode=disable
     ports:
       - "8080:8080"
     restart: always

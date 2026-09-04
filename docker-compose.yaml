@@ -33,6 +33,8 @@ services:
     environment:
       SERVER_PORT: ${SERVER_PORT}
       SECRET_KEY: ${SECRET_KEY}
+      NATS_URL: nats://nats:4222
+      GRPC_PORT: ${GRPC_PORT}
       SCYLLA_URL: ${SCYLLA_URL}
       SCYLLA_KEYSPACE: ${SCYLLA_KEYSPACE}
       DATABASE_URL: postgres://${DB_USER}:${DB_PASSWORD}@pgsql:5432/${DB_NAME}?sslmode=disable
@@ -44,6 +46,12 @@ services:
         condition: service_healthy
       pgsql:
         condition: service_healthy
+      nats:
+        condition: service_started
+
+  nats:
+    image: nats:2.10-alpine
+    restart: always
 
 volumes:
   scylla_data:

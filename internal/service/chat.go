@@ -4,6 +4,8 @@ import (
 	"context"
 	"spotify-chat/internal/dto"
 	"spotify-chat/internal/repository"
+
+	"github.com/google/uuid"
 )
 
 type chatService struct {
@@ -23,4 +25,13 @@ func (s *chatService) CreateChat(ctx context.Context, params dto.CreateChatParam
 	}
 
 	return chat, nil
+}
+
+func (s *chatService) GetChatsByUserId(ctx context.Context, userId uuid.UUID) ([]dto.Chat, error) {
+	chats, err := s.chatRepo.GetChatsByUserId(ctx, userId)
+	if err != nil {
+		return nil, err
+	}
+
+	return chats, err
 }

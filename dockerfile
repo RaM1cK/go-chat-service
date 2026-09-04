@@ -17,6 +17,4 @@ WORKDIR /chat-service
 COPY --from=builder /bin/chat-service .
 COPY migrations/ ./migrations/
 
-EXPOSE 8080
-
 CMD ["./chat-service"]

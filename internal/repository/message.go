@@ -29,12 +29,12 @@ func (r *messageRepo) Create(ctx context.Context, params dto.CreateMessageParams
 		CreatedAt: now,
 		Data:      params.Data,
 		DataType:  params.DataType,
-		Id:        now.Unix(),
+		Id:        uuid.UUID(params.ID),
 		SenderId:  params.SenderID,
 	}
 
 	if params.QuotedID != nil {
-		row.QuotedId = *params.QuotedID
+		row.QuotedId = uuid.UUID(*params.QuotedID)
 	}
 
 	if err := scylla.MessagesByChat.
@@ -67,13 +67,13 @@ func (r *messageRepo) GetByChatID(ctx context.Context, chatID uuid.UUID, limit i
 	return toMessages(rows), nil
 }
 
-func (r *messageRepo) Delete(ctx context.Context, chatID uuid.UUID, createdAt time.Time, id int64) error {
+func (r *messageRepo) Delete(ctx context.Context, chatID uuid.UUID, createdAt time.Time, id uuid.UUID) error {
 	q := scylla.MessagesByChat.
 		DeleteQueryContext(ctx, r.session).
 		BindStruct(scylla.MessagesByChatStruct{
 			ChatId:    chatID,
 			CreatedAt: createdAt,
-			Id:        id,
+			Id:        uuid.UUID(id),
 		})
 
 	return q.ExecRelease()
@@ -90,15 +90,15 @@ func toMessages(rows []scylla.MessagesByChatStruct) []dto.Message {
 func toMessage(m scylla.MessagesByChatStruct) dto.Message {
 	msg := dto.Message{
 		CreatedAt: m.CreatedAt,
-		ID:        m.Id,
+		ID:        uuid.UUID(m.Id),
 		ChatID:    m.ChatId,
 		SenderID:  m.SenderId,
 		Data:      m.Data,
 		DataType:  m.DataType,
 	}
 
-	if m.QuotedId != 0 {
-		q := m.QuotedId
+	if m.QuotedId != uuid.Nil {
+		q := uuid.UUID(m.QuotedId)
 		msg.QuotedID = &q
 	}
 

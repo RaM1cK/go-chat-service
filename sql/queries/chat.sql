@@ -29,6 +29,12 @@ WHERE chat_id = $1;
 SELECT id, type, name, logo FROM chats
 WHERE id = $1;
 
+-- name: GetChatsByUserId :many
+SELECT c.id, c.type, c.name, c.logo
+FROM chats c
+JOIN chat_members cm ON cm.chat_id = c.id
+WHERE cm.user_id = $1;
+
 -- name: IsChatMember :one
 SELECT EXISTS(
     SELECT 1 FROM chat_members

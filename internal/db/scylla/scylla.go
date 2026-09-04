@@ -58,7 +58,7 @@ type MessagesByChatStruct struct {
 	CreatedAt time.Time
 	Data      string
 	DataType  int16
-	Id        int64
-	QuotedId  int64
+	Id        [16]byte
+	QuotedId  [16]byte
 	SenderId  [16]byte
 }

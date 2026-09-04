@@ -97,6 +97,38 @@ func (q *Queries) GetChat(ctx context.Context, id uuid.UUID) (Chat, error) {
 	return i, err
 }
 
+const getChatsByUserId = `-- name: GetChatsByUserId :many
+SELECT c.id, c.type, c.name, c.logo
+FROM chats c
+JOIN chat_members cm ON cm.chat_id = c.id
+WHERE cm.user_id = $1
+`
+
+func (q *Queries) GetChatsByUserId(ctx context.Context, userID uuid.UUID) ([]Chat, error) {
+	rows, err := q.db.Query(ctx, getChatsByUserId, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Chat
+	for rows.Next() {
+		var i Chat
+		if err := rows.Scan(
+			&i.ID,
+			&i.Type,
+			&i.Name,
+			&i.Logo,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getDMChat = `-- name: GetDMChat :one
 SELECT chat_id FROM dm_chats
 WHERE user_a = $1 AND user_b = $2

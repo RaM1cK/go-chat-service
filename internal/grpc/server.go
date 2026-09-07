@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"spotify-chat/internal/service"
@@ -36,9 +37,15 @@ func (s *chatServer) GetChats(req *pb.GetChatsRequest, stream pb.ChatService_Get
 
 	chats, err := s.chatService.GetChatsByUserId(ctx, userID)
 	if err != nil {
-		return err
+		switch {
+		case errors.Is(err, context.Canceled):
+			return status.Error(codes.Canceled, "request canceled")
+		case errors.Is(err, context.DeadlineExceeded):
+			return status.Error(codes.DeadlineExceeded, "request timed out")
+		default:
+			return status.Error(codes.Internal, "faled to get chats")
+		}
 	}
-	cancel()
 
 	for _, chat := range chats {
 		select {
@@ -55,7 +62,7 @@ func (s *chatServer) GetChats(req *pb.GetChatsRequest, stream pb.ChatService_Get
 		if chat.Name != nil {
 			msg.Name = *chat.Name
 		}
-		
+
 		if chat.Logo != nil {
 			msg.Logo = &pb.URL{Value: *chat.Logo}
 		}

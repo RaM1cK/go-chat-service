@@ -38,6 +38,11 @@ type Message[T any] struct {
 	Room    string `json:"room"`
 }
 
+type NatsMessage[T any] struct {
+	Message[T]
+	SenderID string `json:"sender_id"`
+}
+
 type Server struct {
 	m  *melody.Melody
 	nc *nats.Conn
@@ -50,7 +55,7 @@ func NewServer(srv service.MessageService) (*Server, error) {
 	}
 
 	s := &Server{m: melody.New(), nc: nc}
-	s.m.Upgrader.CheckOrigin = func(*http.Request) bool { return true }
+	s.m.Upgrader.CheckOrigin = func(*http.Request) bool { return true } // для разработки
 	s.m.HandleMessage(s.handleMessage(srv))
 
 	if _, err := nc.Subscribe(roomSubjectPrefix+">", s.deliverFromNats); err != nil {
@@ -143,10 +148,13 @@ func (s *Server) sendMessage(srv service.MessageService, sess *melody.Session, r
 
 	s.writeStatus(sess, params.ID, "sent")
 
-	data, err := json.Marshal(Message[any]{
-		Room:    room,
-		Event:   ReceiveMessage,
-		Payload: saved,
+	data, err := json.Marshal(NatsMessage[any]{
+		Message: Message[any]{
+			Room:    room,
+			Event:   ReceiveMessage,
+			Payload: saved,
+		},
+		SenderID: params.SenderID.String(),
 	})
 	if err != nil {
 		return
@@ -179,7 +187,7 @@ func (s *Server) userID(sess *melody.Session) uuid.UUID {
 }
 
 func (s *Server) deliverFromNats(m *nats.Msg) {
-	var msg Message[any]
+	var msg NatsMessage[any]
 	if err := json.Unmarshal(m.Data, &msg); err != nil {
 		return
 	}
@@ -202,7 +210,11 @@ func (s *Server) deliverFromNats(m *nats.Msg) {
 		if !ok || rooms == nil {
 			return false
 		}
-		return slices.Contains(rooms.([]string), room)
+		if !slices.Contains(rooms.([]string), room) {
+			return false
+		}
+		sid, _ := q.Get("userID")
+		return sid.(uuid.UUID).String() != msg.SenderID
 	})
 }
 

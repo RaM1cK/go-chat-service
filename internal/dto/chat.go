@@ -1,6 +1,8 @@
 package dto
 
-import "github.com/google/uuid"
+import (
+	"github.com/google/uuid"
+)
 
 type CreateChatParams struct {
 	Type int16
@@ -14,4 +16,3 @@ type Chat struct {
 	Name *string
 	Logo *string
 }
-

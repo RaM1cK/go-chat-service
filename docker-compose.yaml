@@ -26,11 +26,12 @@ services:
       timeout: 5s
       retries: 5
 
-  chat-service:
+  chat:
     build:
       context: .
       dockerfile: dockerfile
     environment:
+      WS_ORIGIN: ${WS_ORIGIN}
       SERVER_PORT: ${SERVER_PORT}
       SECRET_KEY: ${SECRET_KEY}
       NATS_URL: nats://nats:4222
@@ -38,9 +39,10 @@ services:
       SCYLLA_URL: ${SCYLLA_URL}
       SCYLLA_KEYSPACE: ${SCYLLA_KEYSPACE}
       DATABASE_URL: postgres://${DB_USER}:${DB_PASSWORD}@pgsql:5432/${DB_NAME}?sslmode=disable
-    ports:
-      - "8080:8080"
     restart: always
+    ports:
+      - "8081:8080"
+      - "50051:50051"
     depends_on:
       scylla: 
         condition: service_healthy

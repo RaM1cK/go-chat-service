@@ -41,21 +41,21 @@ func (r *chatRepo) GetChatsByUserId(ctx context.Context, userID uuid.UUID) ([]dt
 
 	return result, err
 }
-	
+
 func (r *chatRepo) AddUser(ctx context.Context, userID uuid.UUID, chatID uuid.UUID) error {
 	return r.queries.AddUser(ctx, pgsql.AddUserParams{
 		UserID: userID,
 		ChatID: chatID,
 	})
 }
-	
+
 func (r *chatRepo) RemoveUser(ctx context.Context, userID uuid.UUID, chatID uuid.UUID) error {
 	return r.queries.RemoveUser(ctx, pgsql.RemoveUserParams{
 		UserID: userID,
 		ChatID: chatID,
 	})
 }
-	
+
 func (r *chatRepo) Delete(ctx context.Context, chatID uuid.UUID) error {
 	return r.queries.DeleteChat(ctx, chatID)
 }

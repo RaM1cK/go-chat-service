@@ -10,7 +10,8 @@ import (
 
 type MessageRepository interface {
 	Create(ctx context.Context, params dto.CreateMessageParams) (dto.Message, error)
-	GetByChatID(ctx context.Context, chatID uuid.UUID, limit int) ([]dto.Message, error)
+	GetByChatID(ctx context.Context, chatID uuid.UUID, limit int32, timeOffset *time.Time) ([]dto.Message, error)
+	GetLastMessagesByChatIDs(ctx context.Context, chatIDs []uuid.UUID) (map[uuid.UUID]dto.Message, error)
 	Delete(ctx context.Context, chatID uuid.UUID, createdAt time.Time, id uuid.UUID) error
 }
 

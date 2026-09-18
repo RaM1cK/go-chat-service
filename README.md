@@ -13,9 +13,10 @@
 - **pgx / pgxpool v5** — драйвер PostgreSQL
 - **goose v3** — миграции PostgreSQL
 - **gocql / gocqlx v3** — драйвер и ORM для ScyllaDB (CQL)
-- **Melody** (поверх gorilla/websocket) — WebSocket-фреймворк (pumps, heartbeats, broadcast)
+- **socket.io v3** ([zishang520/socket.io](https://github.com/zishang520/socket.io)) — WebSocket-фреймворк (rooms, broadcast, acks)
 - **nats.go** — клиент NATS (межсервисный fan-out сообщений)
 - **golang-jwt/jwt v5** — проверка JWT-токенов
+- **google.golang.org/grpc** — gRPC-API для API-сервиса
 - **sqlc** — codegen запросов PostgreSQL в Go из SQL
 
 ### Инфраструктура
@@ -32,16 +33,18 @@
 ```
 spoty-chat/
 ├── cmd/
-│   └── main.go              # Точка входа, подключение к БД, WebSocket
+│   └── main.go              # Точка входа: миграции, БД, WS-сервер, gRPC
 ├── internal/
 │   ├── auth/                # Валидация JWT
 │   ├── db/
+│   │   ├── db.go            # Подключение к PostgreSQL / ScyllaDB, миграции
 │   │   ├── pgsql/           # Сгенерированные sqlc запросы (pgx)
 │   │   └── scylla/          # Сгенерированные модели gocqlx
-│   ├── dto/                 # DTO сообщений
+│   ├── dto/                 # DTO сообщений и чатов
+│   ├── grpc/                # gRPC-сервер (чаты, сообщения)
 │   ├── repository/          # Слой доступа к данным
 │   ├── service/             # Бизнес-логика
-│   └── ws/                  # WebSocket hub и клиенты
+│   └── ws/                  # Socket.io сервер (server.go)
 ├── migrations/
 │   ├── pgsql/               # Миграции goose (SQL)
 │   └── scylla/              # Миграции gocqlx (CQL)
@@ -79,36 +82,48 @@ spoty-chat/
 
 ## Архитектура
 
+Сервис поднимает два эндпоинта:
+- **HTTP/WebSocket** на `SERVER_PORT` — socket.io на пути `/ws` (`/ws` и `/ws/` зарегистрированы, чтобы ловить хендшейки вида `/ws/?EIO=4...`);
+- **gRPC** на `GRPC_PORT` — RPC для остальных сервисов (чаты, сообщения).
+
 ### WebSocket
-`Server` (internal/ws/server.go) построен на библиотеке **Melody** (поверх gorilla/websocket), которая берёт на себя WritePump/ReadPump, ping/pong heartbeat и конкурентную запись в сессии. На каждую сессию через `sess.Set("rooms", []string{...})` запоминается список комнат, на которые подписан клиент.
 
-Клиент может подключаться к нескольким чатам одновременно, отправляя `join-room` для каждого. При доставке сообщения `BroadcastFilter` проверяет, входит ли комната в список подписанта — это позволяет получать сообщения сразу от всех выбранных чатов.
+Реалтайм построен на **socket.io v3**. Каждый клиент после хендшейка автоматически попадает в приватную комнату, названную его socket-id (`s.Join(Room(s.id))`). Комнаты чатов называются `chat:<chatID>`.
 
-При горизонтальном масштабировании (несколько инстансов `chat-service`) сообщение сохраняется и публикуется через **NATS**: каждый `Server` публикует broadcast в subject `room.<chatID>` и подписан на `room.>` — доставка идёт клиентам **всех** инстансов, включая отправителя.
+Клиент может подписаться на несколько чатов разом, прислав событие `join-room` с несколькими аргументами — сервер собирает их в `[]sio.Room` и вызывает единый `sock.Join(rooms...)`.
+
+При горизонтальном масштабировании (несколько инстансов) сообщение сохраняется и публикуется через **NATS**: каждый инстанс публикует событие в subject `room.<chatID>` и подписан на `room.>` — доставка идёт клиентам **всех** инстансов.
 
 ### События WebSocket
-| Событие (входящее) | Описание |
-|--------------------|----------|
-| `join-room` | Регистрация клиента в комнате (чате) |
-| `send-message` | Отправка сообщения в комнату |
-| `receive-message` | Доставка сообщения всем участникам комнаты |
-| `message-status` | Статус отправки для конкретного клиента (Pending → Sent/Failed) |
+| Событие | Направление | Описание |
+|---------|-------------|----------|
+| `join-room` | client → server | Подписка на один или несколько чатов: `emit("join-room", ...chatIds)` |
+| `send-message` | client → server | Отправка сообщения `{room, msg}`; последний аргумент — ack-callback |
+| `receive-message` | server → client | Доставка сообщение участникам комнаты (кроме сокета-отправителя) |
+| `message-status` | — | Зарезервировано (обновление статусов через ack вместо отдельного события) |
 
-### Поток доставки (Pending → Sent → receive-message)
-1. Клиент шлёт `send-message` (с уникальным `id` сообщения) → `sendMessage` сохраняет в Scylla
-2. При успехе → клиенту отправляется `message-status: {id, status: "sent"}`
-3. При ошибке → клиенту отправляется `message-status: {id, status: "failed"}`
-4. Сообщение публикуется в NATS subject `room.<chatID>` и доставляется всем участникам
-5. Каждый инстанс получает `receive-message` из NATS и рассылает его локальным сессиям
+### Поток отправки сообщения
+1. Клиент шлёт `send-message` с `{room, msg}`, где `msg.id` — **клиентский UUID** (нужен для оптимистичного UI и дедупликации).
+2. Сервер сохраняет сообщение в Scylla (`senderId` берётся из JWT, а не из payload).
+3. При успехе в **ack** возвращается сохранённый `dto.Message` — клиент обновляет свой оптимистичный экземпляр (статус, `createdAt`).
+4. При ошибке в ack возвращается `{error: "..."}`.
+5. Вместе с ack сервер публикует сообщение в NATS subject `room.<chatID>`, прокинув туда **socket-id отправителя** (`SenderSid`).
+6. Каждый инстанс в `deliverFromNats` делает broadcast `To(chat:<room>)` c `Except(SenderSid)` — сообщение получают все, **кроме сокета, который его отправил**.
 
-### Оптимистичный UI (Pending → Sent)
-- Клиент сразу рисует сообщение в интерфейсе со статусом **Pending**
-- Как только приходит `message-status: sent`, UI обновляет статус
-- Если приходит `failed` — показывается ошибка и сообщение помечается как не отправленное
-- Идентификатор `id` генерируется клиентом и используется для сопоставления Pending → Sent
+### Несколько устройств одного пользователя
+Исключается только конкретный сокет-отправитель, а не все сокеты пользователя. Поэтому если пользователь сидит на двух устройствах в одном чате:
+- устройство A получает только **ack** (сразу, без исследования через broadcast);
+- устройство B получает сообщение через **receive-message**, как и остальные.
+
+В крайнем случае (сокет A переподключился до доставки broadcast) его старый sid мёртв, `Except` не находит никого — A получит дубликат `receive-message`. От этого защищает **дедупликация по id сообщения на клиенте** (клиентский UUID сохраняется сервером как есть), так что дубли не появляются в UI.
+
+### Оптимистичный UI
+- Клиент сразу рисует сообщение со статусом **Pending**.
+- Ack с сохранённым сообщением обновляет статус и `createdAt`.
+- Ack с `{error}` помечает сообщение как не отправленное.
 
 ### Аутентификация
-При подключении к `/ws` проверяется JWT-токен из cookie `token` (валидация HMAC-подписи через `SECRET_KEY`, извлечение `userID` из claims) и кладётся в ключи сессии. Отправитель сообщения определяется по JWT, а не по payload.
+При хендшейке `allowRequest` проверяет JWT из cookie `token` (валидация HMAC-подписи через `SECRET_KEY`, извлечение `userID` из claims). Это же `userID` сохраняется в `sock.Data()` и используется как `senderId` при отправке сообщений.
 
 ---
 
@@ -120,11 +135,13 @@ spoty-chat/
 docker compose up --build
 ```
 
-Сервис становится доступен на `http://localhost:8080`. Запускаются и ожидают готовности (healthcheck) ScyllaDB и PostgreSQL, стартует NATS.
+Запускаются ScyllaDB и PostgreSQL (ожидание готовности через healthcheck), стартует NATS и контейнер `chat`. Сервис доступен:
+- HTTP/WebSocket: `http://localhost:8081` (в контейнере `8080`),
+- gRPC: `localhost:50051`.
 
 ### Локальная разработка
 
-Запуск миграций и сервера выполняются автоматически в `main.go` при старте:
+Запуск миграций выполняется автоматически в `main.go` при старте:
 
 ```bash
 go run ./cmd/main.go
@@ -142,7 +159,9 @@ sqlc generate
 
 ```env
 SERVER_PORT=8080
+GRPC_PORT=50051
 SECRET_KEY=your_jwt_secret
+WS_ORIGIN=*
 
 NATS_URL=nats://localhost:4222
 
@@ -152,6 +171,9 @@ SCYLLA_KEYSPACE=messages
 DB_NAME=chat
 DB_USER=root
 DB_PASSWORD=your_password
+DATABASE_URL=postgres://root:your_password@localhost:5432/chat?sslmode=disable
 ```
 
-> При запуске через docker-compose `SCYLLA_URL` указывает на имя сервиса `scylla`, а `NATS_URL` — на `nats://nats:4222` (см. docker-compose.yaml). При локальном запуске ScyllaDB вместо этого следует указать `SCYLLA_URL=localhost`.
+> При запуске через docker-compose `SCYLLA_URL` указывает на имя сервиса `scylla`, `NATS_URL` — на `nats://nats:4222`, а `DATABASE_URL` собирается из `DB_*` для хоста `pgsql` (см. docker-compose.yaml). При локальном запуске ScyllaDB вместо этого следует указать `SCYLLA_URL=localhost`.
+>
+> `WS_ORIGIN` — допустимый `Origin` для CORS WebSocket-хендшейков (`*` для всех). Его обязан передавать браузер, поэтому без корректного значения браузерная сессия отклоняется на этапе handshake.

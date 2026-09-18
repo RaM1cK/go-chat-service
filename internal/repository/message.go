@@ -4,6 +4,7 @@ import (
 	"context"
 	"spotify-chat/internal/db/scylla"
 	"spotify-chat/internal/dto"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -34,7 +35,7 @@ func (r *messageRepo) Create(ctx context.Context, params dto.CreateMessageParams
 	}
 
 	if params.QuotedID != nil {
-		row.QuotedId = uuid.UUID(*params.QuotedID)
+		row.QuotedId = *params.QuotedID
 	}
 
 	if err := scylla.MessagesByChat.
@@ -47,16 +48,23 @@ func (r *messageRepo) Create(ctx context.Context, params dto.CreateMessageParams
 	return toMessage(row), nil
 }
 
-func (r *messageRepo) GetByChatID(ctx context.Context, chatID uuid.UUID, limit int) ([]dto.Message, error) {
+func (r *messageRepo) GetByChatID(ctx context.Context, chatID uuid.UUID, limit int32, timeOffset *time.Time) ([]dto.Message, error) {
 	var rows []scylla.MessagesByChatStruct
 
-	q := qb.Select("messages_by_chat").
-		Where(qb.Eq("chat_id")).
+	b := qb.Select("messages_by_chat").
+		Where(qb.Eq("chat_id"))
+
+	row := scylla.MessagesByChatStruct{ChatId: chatID}
+	if timeOffset != nil {
+		b = b.Where(qb.Lt("created_at"))
+		row.CreatedAt = *timeOffset
+	}
+
+	q := b.
+		OrderBy("created_at", qb.DESC).
 		LimitNamed("limit").
 		QueryContext(ctx, r.session).
-		BindStructMap(scylla.MessagesByChatStruct{
-			ChatId: chatID,
-		}, map[string]interface{}{
+		BindStructMap(row, map[string]any{
 			"limit": limit,
 		})
 
@@ -65,6 +73,43 @@ func (r *messageRepo) GetByChatID(ctx context.Context, chatID uuid.UUID, limit i
 	}
 
 	return toMessages(rows), nil
+}
+
+func (r *messageRepo) GetLastMessagesByChatIDs(ctx context.Context, chatIDs []uuid.UUID) (map[uuid.UUID]dto.Message, error) {
+	if len(chatIDs) == 0 {
+		return map[uuid.UUID]dto.Message{}, nil
+	}
+
+	stmt := "SELECT * FROM messages_by_chat WHERE " +
+		inClause("chat_id", len(chatIDs)) +
+		" PER PARTITION LIMIT 1"
+
+	args := make([]any, len(chatIDs))
+	for i, id := range chatIDs {
+		args[i] = id
+	}
+
+	var rows []scylla.MessagesByChatStruct
+
+	if err := r.session.Query(stmt, nil).
+		WithContext(ctx).
+		Bind(args...).
+		SelectRelease(&rows); err != nil {
+		return nil, err
+	}
+
+	result := make(map[uuid.UUID]dto.Message, len(rows))
+	for _, row := range rows {
+		msg := toMessage(row)
+		result[msg.ChatID] = msg
+	}
+
+	return result, nil
+}
+
+
+func inClause(column string, n int) string {
+	return column + " IN (" + strings.Repeat("?,", n-1) + "?)"
 }
 
 func (r *messageRepo) Delete(ctx context.Context, chatID uuid.UUID, createdAt time.Time, id uuid.UUID) error {

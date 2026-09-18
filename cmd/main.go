@@ -41,7 +41,7 @@ func main() {
 	msgService := service.NewMessageService(msgRepo)
 	chatService := service.NewChatService(chatRepo)
 
-	chatServer := grpc.NewChatServer(chatService)
+	chatServer := grpc.NewChatServer(chatService, msgService)
 
 	srv, err := ws.NewServer(msgService)
 	if err != nil {
@@ -49,7 +49,9 @@ func main() {
 	}
 	defer srv.Close()
 
-	http.HandleFunc("/ws", srv.Handle)
+	srvHandler := srv.Handler()
+	http.Handle("/ws", srvHandler)
+	http.Handle("/ws/", srvHandler)
 	go func() {
 		if err := chatServer.Run(os.Getenv("GRPC_PORT")); err != nil {
 			log.Fatalf("grpc server: %v", err)
